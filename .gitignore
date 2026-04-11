@@ -1,0 +1,17 @@
+__pycache__/
+*.py[cod]
+*$py.class
+.env
+.venv
+env/
+venv/
+ENV/
+.pytest_cache/
+.DS_Store
+*.txt
+!requirements.txt
+!README.md
+debug_output.txt
+error_reason.txt
+final_report.txt
+test_results.txt
