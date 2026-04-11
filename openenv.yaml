@@ -1,0 +1,8 @@
+name: "Loan Shark Escape"
+description: "Escape a debt-trap environment with weekly compounding interest and stress levels."
+version: "1.0.0"
+entrypoint: "inference.py"
+server: "server/app.py"
+tasks:
+  - id: "lse-medium"
+    description: "Standard medium difficulty task."

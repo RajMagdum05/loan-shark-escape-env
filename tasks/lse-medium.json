@@ -1,0 +1,13 @@
+{
+  "initial_cash": 1000.0,
+  "monthly_budget": 3000.0,
+  "monthly_expenses": 2500.0,
+  "loans": [
+    {
+      "id": "predatory_001",
+      "balance": 2000.0,
+      "weekly_rate": 0.15,
+      "min_payment": 300.0
+    }
+  ]
+}
