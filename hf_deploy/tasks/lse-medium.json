@@ -1,0 +1,18 @@
+{
+  "task_id": "lse-medium",
+  "description": "Two predatory loans, tight budget, credit union window opens only at month 4",
+  "horizon_months": 18,
+  "loans": [
+    {"name": "QuickCash", "balance": 8000, "weekly_fee": 800, "apr_equivalent": 2.6},
+    {"name": "MoneyMart", "balance": 4000, "weekly_fee": 600, "apr_equivalent": 3.9}
+  ],
+  "monthly_income": 22000,
+  "fixed_expenses": 18000,
+  "escape_routes": {
+    "credit_union_available_from_month": 4,
+    "credit_union_rate": 0.18,
+    "ngo_help_available": true,
+    "ngo_help_months": [6, 12]
+  },
+  "income_shocks": [{"month": 8, "amount": -5000}]
+}

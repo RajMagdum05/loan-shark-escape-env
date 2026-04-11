@@ -1,19 +1,20 @@
-name: loan-shark-escape-env
+spec_version: 1
+name: loan_shark_escape_env
+type: space
+runtime: fastapi
+app: server.app:app
+app_port: 7860
+
 version: "1.0.0"
 description: >
-  A predatory lending escape RL environment. An agent must make monthly
-  financial decisions to escape a debt trap before hitting the spiral lock
-  point of no return. Simulates real-world predatory loan dynamics with
-  weekly compounding fees, escape routes, and income shocks.
+  A predatory lending escape RL environment. The agent must make sequential
+  monthly decisions to escape a debt trap before hitting a spiral-lock state.
 author: rehan
 tags:
   - finance
   - openenv
   - reinforcement-learning
   - social-impact
-app_port: 8000
-base_path: /docs
-sdk: docker
 tasks:
   - id: lse-easy
     description: One predatory loan, credit union always available

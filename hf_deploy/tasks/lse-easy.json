@@ -1,0 +1,16 @@
+{
+  "task_id": "lse-easy",
+  "description": "One small predatory loan, budget is comfortable, credit union always available",
+  "horizon_months": 12,
+  "loans": [
+    {"name": "QuickCash", "balance": 5000, "weekly_fee": 500, "apr_equivalent": 2.6}
+  ],
+  "monthly_income": 25000,
+  "fixed_expenses": 15000,
+  "escape_routes": {
+    "credit_union_available": true,
+    "credit_union_rate": 0.14,
+    "ngo_help_available": false
+  },
+  "income_shocks": []
+}

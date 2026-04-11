@@ -57,7 +57,7 @@ cp .env.example .env
 ```
 
 Set `.env` values:
-- `API_BASE_URL=http://localhost:8000`
+- `API_BASE_URL=http://localhost:7860`
 - `MODEL_NAME=gpt-4.1-mini` (or an Anthropic model)
 - `OPENAI_API_KEY` or `ANTHROPIC_API_KEY`
 - `HF_TOKEN` (optional, for hackathon workflow)
@@ -65,7 +65,7 @@ Set `.env` values:
 ## Run Server
 
 ```bash
-uvicorn server.app:app --host 0.0.0.0 --port 8000 --reload
+uvicorn server.app:app --host 0.0.0.0 --port 7860 --reload
 ```
 
 ## Run Inference Agent
