@@ -1,62 +1,64 @@
-import sys
-import os
-from fastapi import FastAPI, HTTPException, Body
-from typing import Dict, Any
+from __future__ import annotations
 
-# Add parent directory to path to import models
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
 
-from environment import LoanSharkEnvironment
-from models import LoanSharkAction, LoanSharkObservation
+from models import LoanSharkAction
+from server.environment import LoanSharkEnvironment
 
-app = FastAPI(title="Loan Shark Escape API")
 
-# Initialize environment
-env = LoanSharkEnvironment()
+class ResetRequest(BaseModel):
+    task_id: str
+
+
+app = FastAPI(title="Loan Shark Escape Environment")
+environment = LoanSharkEnvironment()
+
+
+@app.get("/health")
+def health() -> dict[str, str]:
+    return {"status": "healthy"}
+
 
 @app.post("/reset")
-async def reset(payload: Dict[str, str] = Body(...)):
-    task_id = payload.get("task_id", "lse-medium")
+def reset(payload: ResetRequest) -> dict:
     try:
-        obs_payload = env.reset(task_id)
-        return obs_payload
-    except FileNotFoundError as e:
-        raise HTTPException(status_code=404, detail=str(e))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        return environment.reset(payload.task_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
 
 @app.post("/step")
-async def step(payload: Dict[str, Any] = Body(...)):
-    action_val = payload.get("action")
-    if action_val is None:
-        raise HTTPException(status_code=400, detail="Action required")
-    
+def step(action: LoanSharkAction) -> dict:
     try:
-        result = env.step(int(action_val))
-        return result
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        return environment.step(action.action)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
 
 @app.get("/state")
-async def get_state():
-    if env.state is None:
-        raise HTTPException(status_code=400, detail="Environment not initialized")
-    return env.state
+def state() -> dict:
+    try:
+        return environment.get_state()
+    except RuntimeError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
 
 @app.post("/evaluate")
-async def evaluate():
-    if env.state is None:
-        raise HTTPException(status_code=400, detail="Environment not initialized")
-    
-    score = env.evaluate()
-    return {
-        "reward": score,
-        "total_fees_paid": env.state["total_interest_paid"],
-        "baseline_fees": env.baseline_fees,
-        "all_loans_cleared": all(l["balance"] <= 0 for l in env.state["loans"]),
-        "spiral_lock_triggered": env.state["spiral_lock"]
-    }
+def evaluate() -> dict:
+    try:
+        reward = environment.evaluate()
+        snapshot = environment.get_state()
+    except RuntimeError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", 8000)))
+    return {
+        "reward": reward,
+        "all_loans_cleared": snapshot["all_loans_cleared"],
+        "total_fees_paid": round(snapshot["total_fees_paid"], 2),
+        "baseline_fees": round(snapshot["baseline_fees"], 2),
+        "spiral_lock_triggered": snapshot["spiral_lock"],
+        "grader": environment.last_grader_result,
+    }

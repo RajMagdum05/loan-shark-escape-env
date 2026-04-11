@@ -1,0 +1,21 @@
+{
+  "task_id": "lse-hard",
+  "description": "Three loans, very tight budget, no credit union, income shocks, NGO help rare",
+  "horizon_months": 24,
+  "loans": [
+    {"name": "QuickCash", "balance": 10000, "weekly_fee": 1000, "apr_equivalent": 2.6},
+    {"name": "MoneyMart", "balance": 6000, "weekly_fee": 800, "apr_equivalent": 3.9},
+    {"name": "LoanShark", "balance": 3000, "weekly_fee": 600, "apr_equivalent": 10.4}
+  ],
+  "monthly_income": 20000,
+  "fixed_expenses": 17000,
+  "escape_routes": {
+    "credit_union_available": false,
+    "ngo_help_available": true,
+    "ngo_help_months": [9]
+  },
+  "income_shocks": [
+    {"month": 5, "amount": -4000},
+    {"month": 14, "amount": -6000}
+  ]
+}

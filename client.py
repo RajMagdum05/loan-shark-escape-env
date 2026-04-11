@@ -5,12 +5,12 @@ import httpx
 
 try:
     from models import LoanSharkAction
-except Exception:  # pragma: no cover - fallback for early scaffolding
+except Exception:  # pragma: no cover
     LoanSharkAction = None  # type: ignore
 
 
 class LoanSharkEscapeEnv:
-    """Async client for the Loan Shark Escape OpenEnv server."""
+    """Async client for Loan Shark Escape OpenEnv server."""
 
     def __init__(self, base_url: str, timeout: float = 30.0) -> None:
         self.base_url = base_url.rstrip("/")
@@ -37,11 +37,10 @@ class LoanSharkEscapeEnv:
         response.raise_for_status()
         return response.json()
 
-    async def step(self, action: Any) -> dict[str, Any]:
+    async def step(self, action: LoanSharkAction | dict[str, Any] | int) -> dict[str, Any]:
         client = await self._get_client()
-
         if LoanSharkAction is not None and isinstance(action, LoanSharkAction):
-            payload = action.model_dump()  # pydantic v2
+            payload = action.model_dump()
         elif isinstance(action, dict):
             payload = action
         else:
@@ -64,9 +63,8 @@ class LoanSharkEscapeEnv:
         return response.json()
 
     def sync(self, coro):
-        """Run an async coroutine from a sync context."""
         try:
             asyncio.get_running_loop()
         except RuntimeError:
             return asyncio.run(coro)
-        raise RuntimeError("sync() cannot run inside an active event loop; use `await`.")
+        raise RuntimeError("sync() cannot be used inside an active event loop. Use await instead.")

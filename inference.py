@@ -16,53 +16,48 @@ HF_TOKEN = os.getenv("HF_TOKEN", "")
 
 
 def _extract_text_from_anthropic(response: Any) -> str:
-    chunks = []
+    chunks: list[str] = []
     for block in getattr(response, "content", []):
         text = getattr(block, "text", None)
         if text:
-            chunks.append(text)
+            chunks.append(str(text))
     return "\n".join(chunks).strip()
 
 
 def _parse_action(raw_text: str) -> int:
     match = re.search(r"\b([0-4])\b", raw_text)
-    if not match:
-        return 1
-    return int(match.group(1))
+    if match:
+        return int(match.group(1))
+    return 1
 
 
 def _build_prompt(observation: dict[str, Any]) -> str:
     return (
-        "You are solving a debt-trap escape environment.\n"
-        "Choose exactly one action (single digit 0-4):\n"
-        "0 = pay predatory loan in full if cash allows\n"
-        "1 = pay minimum rollover fee only\n"
-        "2 = refinance via credit union if available\n"
-        "3 = seek NGO help if available\n"
-        "4 = do nothing this month\n\n"
-        "Rules: prefer actions that reduce total future fees, avoid spiral lock, and finish all loans.\n"
-        f"Observation:\n{json.dumps(observation, indent=2)}\n\n"
-        "Respond with only one digit from 0 to 4."
+        "You are controlling a borrower in a debt-trap simulation.\\n"
+        "Choose exactly ONE action digit from 0 to 4.\\n"
+        "0: pay predatory loan in full if cash allows\\n"
+        "1: pay minimum rollover fee only\\n"
+        "2: refinance via credit union if available\\n"
+        "3: seek NGO help if available\\n"
+        "4: do nothing this month\\n\\n"
+        "Goal: clear all loans quickly, avoid spiral lock, and minimize total fees paid.\\n"
+        f"Observation: {json.dumps(observation, indent=2)}\\n\\n"
+        "Respond with only one digit 0-4."
     )
 
 
 def _call_llm(prompt: str) -> str:
-    lower_model = MODEL_NAME.lower()
+    model_lower = MODEL_NAME.lower()
 
-    if "gpt" in lower_model or "o1" in lower_model or "o3" in lower_model:
+    if "gpt" in model_lower or "o1" in model_lower or "o3" in model_lower or "o4" in model_lower:
         from openai import OpenAI
 
         client = OpenAI()
         response = client.responses.create(
             model=MODEL_NAME,
-            input=[
-                {
-                    "role": "user",
-                    "content": [{"type": "input_text", "text": prompt}],
-                }
-            ],
-            temperature=0,
+            input=[{"role": "user", "content": [{"type": "input_text", "text": prompt}]}],
             max_output_tokens=10,
+            temperature=0,
         )
         return (response.output_text or "").strip()
 
@@ -84,22 +79,22 @@ async def run_episode() -> None:
 
     async with LoanSharkEscapeEnv(API_BASE_URL) as env:
         reset_payload = await env.reset("lse-medium")
-        observation = reset_payload.get("observation", reset_payload)
+        observation = reset_payload
 
         done = False
-        step_idx = 0
-        while not done and step_idx < 60:
+        step_count = 0
+        while not done and step_count < 60:
             prompt = _build_prompt(observation)
-            llm_text = _call_llm(prompt)
-            action = _parse_action(llm_text)
+            model_output = _call_llm(prompt)
+            action = _parse_action(model_output)
 
             step_payload = await env.step({"action": action})
             reward = step_payload.get("reward", 0)
             done = bool(step_payload.get("done", False))
             observation = step_payload.get("observation", step_payload)
 
-            print(f"step={step_idx:02d} action={action} reward={reward} done={done}")
-            step_idx += 1
+            print(f"step={step_count:02d} action={action} reward={reward} done={done}")
+            step_count += 1
 
         grader_result = await env.evaluate()
         print("grader_result:")

@@ -1,0 +1,20 @@
+[project]
+name = "loan-shark-escape-env"
+version = "1.0.0"
+description = "OpenEnv debt trap escape environment"
+requires-python = ">=3.11"
+dependencies = [
+  "fastapi",
+  "uvicorn",
+  "pydantic",
+  "pytest",
+  "openenv-core",
+  "python-dotenv",
+  "anthropic",
+  "openai",
+  "httpx",
+]
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
