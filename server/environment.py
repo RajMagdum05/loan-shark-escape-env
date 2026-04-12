@@ -34,20 +34,24 @@ class LoanSharkEnvironment(Environment):
         initial_debt = 5000.0
         income = 2000.0
         credit_score = 650.0
+        naive_baseline_fees = 4000.0
 
         # Mapping task IDs to specific configurations (from email requirements)
         if task_id == "lse-easy":
             initial_debt = 3000.0
             income = 2500.0
             credit_score = 700.0
+            naive_baseline_fees = 2200.0
         elif task_id == "lse-medium":
             initial_debt = 5000.0
             income = 2000.0
             credit_score = 650.0
+            naive_baseline_fees = 3800.0
         elif task_id == "lse-hard":
             initial_debt = 8000.0
             income = 1500.0
             credit_score = 600.0
+            naive_baseline_fees = 6200.0
 
         self._state = LoanState(
             month=0,
@@ -57,7 +61,12 @@ class LoanSharkEnvironment(Environment):
             stress_level=0,
             credit_union_used=False,
             ngo_help_used=False,
-            is_done=False
+            is_done=False,
+            task_id=task_id,
+            initial_debt=initial_debt,
+            fees_accrued=0.0,
+            naive_baseline_fees=naive_baseline_fees,
+            max_stress_level=0,
         )
 
         return self._make_observation("Game started: Escape the predatory debt trap.")
@@ -89,11 +98,13 @@ class LoanSharkEnvironment(Environment):
             msg = "Borrowed more. Stress up, score down."
 
         elif atype == "refinance":
-            if not s.credit_union_used and s.credit_score > 620:
+            if s.task_id == "lse-hard":
+                msg = "Refinance unavailable in this scenario (no credit union access)."
+            elif not s.credit_union_used and s.credit_score > 620:
                 s.credit_score += 15
-                # Lower future interest logic would go here, 
+                # Lower future interest logic would go here,
                 # for now we simulate a one-time relief
-                s.debt *= 0.9 
+                s.debt *= 0.9
                 s.credit_union_used = True
                 msg = "Refinanced via Credit Union! Debt reduced by 10%."
             else:
@@ -126,7 +137,9 @@ class LoanSharkEnvironment(Environment):
 
         # 📉 INTEREST & AUTO-FEES
         if s.debt > 0:
-            s.debt *= 1.05 # 5% monthly interest
+            interest = s.debt * 0.05
+            s.fees_accrued += interest
+            s.debt *= 1.05  # 5% monthly interest
             # Naive auto-deduction of minimums if not paid
             if atype != "pay":
                 s.stress_level += 1
@@ -153,30 +166,55 @@ class LoanSharkEnvironment(Environment):
             s.termination_reason = "Terminated: Time Limit"
             msg = "TIME LIMIT: 24 months passed without clearing debt."
 
+        s.max_stress_level = max(s.max_stress_level, s.stress_level)
         return self._make_observation(msg)
 
     def evaluate(self) -> Dict[str, Any]:
-        """Official grader scoring logic."""
+        """Aggregate metrics for hackathon graders (also exposed via /evaluate)."""
         s = self._state
-        score = 0.2 # Baseline
-        
-        if s.debt <= 0:
-            score = 0.95
-        elif s.debt < 2000:
-            score = 0.7
-        elif s.credit_score > 600:
-            score = 0.5
-            
+        from grader import score_episode
+
+        metrics = {
+            "task_id": s.task_id,
+            "debt": round(s.debt, 2),
+            "initial_debt": s.initial_debt,
+            "fees_accrued": round(s.fees_accrued, 2),
+            "naive_baseline_fees": s.naive_baseline_fees,
+            "max_stress_level": s.max_stress_level,
+            "credit_score": s.credit_score,
+            "month": s.month,
+            "is_done": s.is_done,
+            "termination_reason": s.termination_reason,
+        }
+        score = score_episode(s.task_id, metrics)
+        # Ensure score is strictly in (0, 1) — never 0.0 or 1.0
+        score = max(0.01, min(0.99, score))
         self.last_grader_result = {
-            "passed": 3 if s.debt <= 0 else 1,
+            "task_id": s.task_id,
+            "passed": 3 if s.debt <= 0 and s.max_stress_level < 10 else 1,
             "total": 3,
-            "score": score,
-            "termination": s.termination_reason
+            "score": round(score, 4),
+            "reward": round(score, 4),
+            "metrics": metrics,
+            "termination": s.termination_reason,
         }
         return self.last_grader_result
 
+    def _partial_reward(self) -> float:
+        s = self._state
+        if s.debt <= 0:
+            return 1.0
+        if s.initial_debt <= 0:
+            return 0.0
+        debt_ratio = min(1.0, max(0.0, s.debt / s.initial_debt))
+        stress_ratio = min(1.0, s.stress_level / 10.0)
+        return max(0.0, 0.45 * (1.0 - debt_ratio) + 0.35 * (1.0 - stress_ratio))
+
     def _make_observation(self, message: str) -> LoanObservation:
         s = self._state
+        actions = ["pay", "borrow", "ngo", "wait"]
+        if s.task_id != "lse-hard":
+            actions.insert(2, "refinance")
         return LoanObservation(
             month=s.month,
             income=round(s.income, 2),
@@ -184,5 +222,15 @@ class LoanSharkEnvironment(Environment):
             credit_score=s.credit_score,
             stress_level=s.stress_level,
             message=message,
-            available_actions=["pay", "borrow", "refinance", "ngo", "wait"]
+            is_done=s.is_done,
+            reward=round(
+                1.0
+                if s.debt <= 0 and s.is_done
+                else (0.0 if s.is_done else self._partial_reward()),
+                4,
+            ),
+            ngo_help_used=s.ngo_help_used,
+            credit_union_used=s.credit_union_used,
+            task_id=s.task_id,
+            available_actions=actions,
         )
