@@ -146,6 +146,7 @@ async def run_task(
     task_id: str,
     oa_client: OpenAI | None,
 ) -> dict[str, Any]:
+    print(f"[START] task={task_id}", flush=True)
     obs = await client.reset(task_id)
     step_idx = 0
     max_steps = 24
@@ -161,21 +162,8 @@ async def run_task(
 
         obs = await client.step(action)
 
-        print(
-            "[STEP] "
-            + _fmt_kv(
-                [
-                    ("task_id", task_id),
-                    ("step", step_idx),
-                    ("action", action),
-                    ("debt", obs.get("total_debt")),
-                    ("stress", obs.get("stress_level")),
-                    ("credit_score", obs.get("credit_score")),
-                    ("done", obs.get("is_done")),
-                    ("reward", obs.get("reward")),
-                ]
-            )
-        )
+        reward = obs.get("reward", 0.0)
+        print(f"[STEP] step={step_idx} reward={reward}", flush=True)
 
         if obs.get("is_done"):
             break
@@ -185,18 +173,10 @@ async def run_task(
     score = float(eval_result.get("score", 0.01))
     # Clamp to strictly (0, 1) — validator rejects exact 0.0 and 1.0
     score = max(0.01, min(0.99, score))
-    print(
-        "[STEP] "
-        + _fmt_kv(
-            [
-                ("task_id", task_id),
-                ("step", "evaluate"),
-                ("score", round(score, 4)),
-                ("passed", eval_result.get("passed")),
-                ("total", eval_result.get("total")),
-            ]
-        )
-    )
+    
+    # Required final output format for the dashboard validator
+    print(f"[END] task={task_id} score={score:.3f} steps={step_idx}", flush=True)
+    
     return {"task_id": task_id, "score": score, "evaluate": eval_result}
 
 
@@ -206,19 +186,7 @@ async def main() -> None:
     if key and not USE_MOCK_AGENT:
         oa_client = OpenAI(base_url=API_BASE_URL, api_key=key)
 
-    print(
-        "[START] "
-        + _fmt_kv(
-            [
-                ("env_base_url", ENV_BASE_URL),
-                ("api_base_url", API_BASE_URL),
-                ("model", MODEL_NAME),
-                ("tasks", ",".join(TASK_IDS)),
-                ("mock", USE_MOCK_AGENT or not key),
-            ]
-        )
-    )
-
+    # Initialize the LoanClient
     client = LoanClient(ENV_BASE_URL)
     summary: dict[str, float] = {}
 
@@ -227,19 +195,8 @@ async def main() -> None:
             row = await run_task(client, tid, oa_client)
             summary[row["task_id"]] = row["score"]
         except Exception as exc:
-            print(
-                "[STEP] "
-                + _fmt_kv(
-                    [
-                        ("task_id", tid),
-                        ("step", "error"),
-                        ("msg", str(exc)),
-                    ]
-                )
-            )
+            print(f"[STEP] step=error msg={str(exc)}")
             summary[tid] = 0.01
-
-    print("[END] " + _fmt_kv([("scores_json", json.dumps(summary, sort_keys=True))]))
 
 
 if __name__ == "__main__":
