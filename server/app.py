@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import json
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI
+from fastapi import HTTPException
+from starlette.requests import Request
 from pydantic import BaseModel
 
 from models import LoanSharkAction
