@@ -1,19 +1,11 @@
-"""Loan Shark Escape package exports."""
+"""Loan Shark Escape — root package (local install / imports)."""
 
-from typing import Any
-
-from .models import LoanSharkAction, LoanSharkObservation
+from client import LoanClient
+from models import LoanAction, LoanObservation, LoanState
 
 __all__ = [
-    "LoanSharkAction",
-    "LoanSharkObservation",
-    "LoanSharkEscapeEnv",
+    "LoanClient",
+    "LoanAction",
+    "LoanObservation",
+    "LoanState",
 ]
-
-
-def __getattr__(name: str) -> Any:
-    if name == "LoanSharkEscapeEnv":
-        from .client import LoanSharkEscapeEnv as _LoanSharkEscapeEnv
-
-        return _LoanSharkEscapeEnv
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

@@ -28,15 +28,20 @@ class LoanSharkEnvironment(Environment):
         super().__init__()
         self._state = LoanState()
         self.last_grader_result = {}
+        # Use a seeded RNG for reproducible episodes
+        self._rng = random.Random(42)
 
     def reset(self, task_id: str = "lse-easy") -> LoanObservation:
+        # Re-seed for reproducibility across evaluation runs
+        self._rng = random.Random(hash(task_id) % 2**32)
+
         # Defaults
         initial_debt = 5000.0
         income = 2000.0
         credit_score = 650.0
         naive_baseline_fees = 4000.0
 
-        # Mapping task IDs to specific configurations (from email requirements)
+        # Mapping task IDs to specific configurations
         if task_id == "lse-easy":
             initial_debt = 3000.0
             income = 2500.0
@@ -80,16 +85,15 @@ class LoanSharkEnvironment(Environment):
         msg = "Step executed."
 
         # 💰 ACTION LOGIC
-        # actions: "pay", "borrow", "refinance", "ngo", "wait"
         atype = action.action_type.lower()
 
         if atype == "pay":
             # Pay exactly what's owed or everything possible
-            payment = min(s.debt, s.income * 0.8) # Cap payment at 80% income for survival
+            payment = min(s.debt, s.income * 0.8)  # Cap payment at 80% income
             s.debt -= payment
             s.credit_score += 5
             s.stress_level = max(0, s.stress_level - 1)
-        
+
         elif atype == "borrow":
             # Taking more debt increases stress and drops credit
             s.debt += 1000
@@ -102,45 +106,43 @@ class LoanSharkEnvironment(Environment):
                 msg = "Refinance unavailable in this scenario (no credit union access)."
             elif not s.credit_union_used and s.credit_score > 620:
                 s.credit_score += 15
-                # Lower future interest logic would go here,
-                # for now we simulate a one-time relief
                 s.debt *= 0.9
                 s.credit_union_used = True
                 msg = "Refinanced via Credit Union! Debt reduced by 10%."
             else:
                 msg = "Refinance failed (already used or score too low)."
-        
+
         elif atype == "ngo":
             if not s.ngo_help_used:
-                s.debt *= 0.65 # Grants wipe 35% of principal
+                s.debt *= 0.65  # Grants wipe 35% of principal
                 s.ngo_help_used = True
                 s.stress_level = max(0, s.stress_level - 3)
                 msg = "NGO Grant received! 35% debt wiped."
             else:
                 msg = "NGO help only available once."
-        
+
         elif atype == "wait":
             s.stress_level += 2
             msg = "Month skipped. Stress is building..."
 
-        # ⚡ RANDOM SHOCKS (Realism 🔥)
-        if random.random() < 0.15: # 15% chance of shock
-            shock = random.choice(["job_loss", "medical"])
-            if shock == "job_loss":
-                s.income *= 0.6
-                s.stress_level += 3
-                msg += " CRITICAL: Job loss! Income slashed by 40%."
-            elif shock == "medical":
-                s.debt += 800
+        # ⚡ DETERMINISTIC SHOCKS (seeded RNG for reproducibility)
+        shock_roll = self._rng.random()
+        if shock_roll < 0.10:  # 10% chance, but deterministic per task
+            shock_type = self._rng.choice(["job_loss", "medical"])
+            if shock_type == "job_loss":
+                s.income *= 0.75  # Reduced from 0.6 to be more fair
                 s.stress_level += 2
-                msg += " EMERGENCY: Medical bill added $800 to debt."
+                msg += " WARNING: Temporary income reduction."
+            elif shock_type == "medical":
+                s.debt += 500  # Reduced from 800
+                s.stress_level += 1
+                msg += " EMERGENCY: Medical bill added $500 to debt."
 
         # 📉 INTEREST & AUTO-FEES
         if s.debt > 0:
             interest = s.debt * 0.05
             s.fees_accrued += interest
             s.debt *= 1.05  # 5% monthly interest
-            # Naive auto-deduction of minimums if not paid
             if atype != "pay":
                 s.stress_level += 1
 
@@ -203,12 +205,13 @@ class LoanSharkEnvironment(Environment):
     def _partial_reward(self) -> float:
         s = self._state
         if s.debt <= 0:
-            return 1.0
+            return 0.99
         if s.initial_debt <= 0:
-            return 0.0
+            return 0.01
         debt_ratio = min(1.0, max(0.0, s.debt / s.initial_debt))
         stress_ratio = min(1.0, s.stress_level / 10.0)
-        return max(0.0, 0.45 * (1.0 - debt_ratio) + 0.35 * (1.0 - stress_ratio))
+        raw = 0.45 * (1.0 - debt_ratio) + 0.35 * (1.0 - stress_ratio)
+        return max(0.01, min(0.99, raw))
 
     def _make_observation(self, message: str) -> LoanObservation:
         s = self._state
@@ -223,12 +226,8 @@ class LoanSharkEnvironment(Environment):
             stress_level=s.stress_level,
             message=message,
             is_done=s.is_done,
-            reward=round(
-                1.0
-                if s.debt <= 0 and s.is_done
-                else (0.0 if s.is_done else self._partial_reward()),
-                4,
-            ),
+            reward=round(self._partial_reward() if not s.is_done else
+                         (0.99 if s.debt <= 0 else 0.05), 4),
             ngo_help_used=s.ngo_help_used,
             credit_union_used=s.credit_union_used,
             task_id=s.task_id,

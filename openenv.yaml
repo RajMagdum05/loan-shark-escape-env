@@ -17,8 +17,8 @@ tags:
   - social-impact
 tasks:
   - id: lse-easy
-    description: One predatory loan, credit union always available
+    description: Lower debt, higher income; NGO + credit-union refinance available
   - id: lse-medium
-    description: Two loans, tight budget, escape window limited
+    description: Higher debt, tighter budget; same tools as easy (harder numbers)
   - id: lse-hard
-    description: Three loans, income shocks, no credit union
+    description: Highest debt, lowest income, random shocks; no refinance (no credit union)

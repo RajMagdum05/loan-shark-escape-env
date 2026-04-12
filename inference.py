@@ -75,22 +75,39 @@ def _build_prompt(observation: dict[str, Any]) -> str:
 
 
 def _mock_agent_logic(obs: dict[str, Any]) -> str:
+    """Smart heuristic agent that handles all difficulty levels."""
     debt = float(obs.get("total_debt") or 0.0)
     score = float(obs.get("credit_score") or 0.0)
     stress = int(obs.get("stress_level") or 0)
+    income = float(obs.get("income") or 0.0)
+    month = int(obs.get("month") or 0)
     allowed = set(obs.get("available_actions") or [])
+
     if debt <= 0:
         return "wait"
+
+    # Priority 1: If stress is dangerously high, pay immediately to reduce it
     if stress >= 7:
         return "pay"
-    if not obs.get("ngo_help_used") and "ngo" in allowed:
+
+    # Priority 2: Use NGO grant early (wipes 35% of debt — huge impact)
+    if not obs.get("ngo_help_used") and "ngo" in allowed and month <= 3:
         return "ngo"
+
+    # Priority 3: Refinance if available and credit score allows
     if (
         "refinance" in allowed
         and not obs.get("credit_union_used")
-        and score > 620
+        and score > 630  # Buffer above 620 threshold
+        and debt > income * 2  # Only worth it when debt is significant
     ):
         return "refinance"
+
+    # Priority 4: Use NGO if not used yet (fallback for later months)
+    if not obs.get("ngo_help_used") and "ngo" in allowed:
+        return "ngo"
+
+    # Default: Always pay to reduce debt and lower stress
     return "pay"
 
 

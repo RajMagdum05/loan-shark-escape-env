@@ -1,99 +1,143 @@
 ---
 title: Loan Shark Escape
 emoji: 🦈
-colorFrom: indigo
-colorTo: blue
+colorFrom: red
+colorTo: yellow
 sdk: docker
-pinned: false
 app_port: 7860
+pinned: false
+license: mit
 ---
 
-# 🏦 Loan Shark Escape Environment
+# 🦈 Loan Shark Escape — Predatory Lending RL Environment
 
-[![OpenEnv](https://img.shields.io/badge/OpenEnv-Compatible-blue)](https://github.com/meta-pytorch/OpenEnv)
-[![FastAPI](https://img.shields.io/badge/FastAPI-Framework-green)](https://fastapi.tiangolo.com/)
-[![Hackathon](https://img.shields.io/badge/Hackathon-Ready-orange)](https://scaler.com/school-of-technology/meta-pytorch-hackathon/)
+> **Meta PyTorch Hackathon × Scaler School of Technology**
+> An OpenEnv-compliant reinforcement learning environment that simulates the real-world challenge of escaping predatory debt traps.
 
-An **OpenEnv-compatible** reinforcement learning environment that simulates a predatory debt trap. Agents must navigate sequential monthly decisions, manage stress, and leverage strategic "escape routes" to survive and clear their debt.
+## 🎯 Problem Statement
 
-## 🚀 The Core Challenge: The "Spiral Lock"
-Predatory payday loans (often 200%+ APR) create a mathematical "event horizon". If a borrower only pays the minimum fee to avoid immediate default, the principal remains untouched, fees compound, and stress rises.
-- **Stress ≥ 10**: Triggers a **Spiral Lock** (Terminal Failure).
-- **Goal**: Clear all loans with minimal total fee burn.
+**400 million people worldwide** are trapped in predatory lending cycles. Loan sharks exploit vulnerable borrowers with hidden fees, compounding interest rates exceeding 200% APR, and psychological pressure tactics. Traditional financial planning tools use static rules that fail when borrowers face dynamic, adversarial conditions — income shocks, medical emergencies, and escalating stress.
 
----
+**Why Reinforcement Learning?**
+Static rule-based planners cannot handle the *sequential decision-making under uncertainty* that defines real debt escape. An RL agent must:
+- Balance short-term survival (paying rent) vs. long-term freedom (clearing debt)
+- Time one-shot escape routes (NGO grants, credit union refinancing) optimally
+- Adapt to stochastic income shocks and compounding interest
 
-## 🛠 Project Structure
+## 🏗️ Solution: The Loan Shark Escape Environment
 
-```bash
-.
+A **production-ready RL environment** where an agent must make monthly financial decisions to escape a predatory debt trap before hitting a "spiral lock" — the point of no return where stress and debt compound irreversibly.
+
+### Core Mechanics
+
+| Component | Description |
+|-----------|-------------|
+| **State Space** | Monthly income, total debt, credit score, stress level (0–10), available actions |
+| **Action Space** | `pay` · `borrow` · `refinance` · `ngo` · `wait` — 5 discrete actions |
+| **Reward Signal** | Composite: debt reduction (45%) + stress management (35%) + fee efficiency (20%) |
+| **Termination** | ✅ Debt cleared · ❌ Bankruptcy (credit < 300) · ❌ Spiral lock (stress ≥ 10) · ⏰ Time limit (24mo) |
+| **Stochastic Events** | Seeded random shocks: job loss (income -25%), medical bills (+$500 debt) |
+
+### Escape Routes (One-Shot Strategic Tools)
+- **🏦 Credit Union Refinance** — Reduces debt by 10%, requires credit score > 620. Available in easy/medium tasks only.
+- **🤝 NGO Grant** — Wipes 35% of principal debt. Single use per episode.
+- **💳 Pay** — Direct debt repayment (up to 80% of monthly income). Reduces stress.
+
+## 📊 Three Tasks with Progressive Difficulty
+
+| Task ID | Debt | Income | Escape Routes | Shocks | Goal |
+|---------|------|--------|---------------|--------|------|
+| `lse-easy` | ₹3,000 | ₹2,500 | Credit union ✓ | Few | Clear debt in ≤12 months |
+| `lse-medium` | ₹5,000 | ₹2,000 | Credit union + NGO | Income shock at month 8 | Clear debt in ≤18 months |
+| `lse-hard` | ₹8,000 | ₹1,500 | NGO only (no credit union) | Multiple shocks | Survive 24 months, minimize debt |
+
+Each task has a **grader** that produces a score strictly in `(0, 1)`:
+- `0.99` = All debt cleared, no spiral lock, fees below baseline
+- `0.50` = Partial debt reduction, some stress management
+- `0.01` = Failed to make meaningful progress
+
+## 🧠 Inference Agent
+
+The baseline agent uses an **LLM (OpenAI-compatible API)** to make decisions:
+
+```
+Observation → LLM Prompt → Action Selection → Environment Step → Reward
+```
+
+A fallback **heuristic agent** is included for offline evaluation:
+1. Use NGO grant early (maximum debt reduction)
+2. Refinance when credit score allows
+3. Always pay to reduce debt and stress
+4. Never borrow (increases debt spiral)
+
+## 🏛️ Project Structure
+
+```
+loan-shark-escape-env/
 ├── server/
-│   ├── app.py           # FastAPI Server Endpoints
-│   └── environment.py   # Core RL Logic & Simulation
-├── tasks/               # Easy, Medium, Hard Scenario Configs
-├── models.py            # Pydantic Data Models
-├── grader.py            # Evaluation Logic
-├── client.py            # Python Async Client SDK
-├── inference.py         # Baseline Inference Script
-├── openenv.yaml         # OpenEnv Manifest
-└── SUBMISSION.md        # Hackathon Dashboard Content
+│   ├── app.py              # FastAPI server (OpenEnv-compliant)
+│   └── environment.py      # Core RL environment logic
+├── tasks/
+│   ├── lse-easy.json        # Task configuration: easy
+│   ├── lse-medium.json      # Task configuration: medium
+│   └── lse-hard.json        # Task configuration: hard
+├── inference.py             # LLM agent + heuristic baseline
+├── grader.py                # Scoring functions (strictly 0–1)
+├── models.py                # Pydantic data models
+├── client.py                # HTTP client for env interaction
+├── openenv.yaml             # OpenEnv specification
+├── Dockerfile               # Container deployment
+├── pyproject.toml           # Python project config
+└── requirements.txt         # Dependencies
 ```
 
----
+## 🚀 Quick Start
 
-## 🚦 Getting Started
-
-### 1. Local Setup
+**1. Install dependencies:**
 ```bash
-python3.11 -m venv .venv
-source .venv/bin/activate
 pip install -r requirements.txt
-cp .env.example .env
 ```
 
-### 2. Launch the Environment
+**2. Start the environment server:**
 ```bash
-# Start the FastAPI server on port 7860
 uvicorn server.app:app --host 0.0.0.0 --port 7860
 ```
 
-### 3. Run a Sample Agent
+**3. Run the baseline agent:**
 ```bash
-# Runs a GPT-powered agent against the medium task
-python3 inference.py
+python inference.py
 ```
 
----
-
-## 🕹 Action Space
-| ID | Action | Description |
-|---|---|---|
-| **0** | **Pay Full** | Pay off principal + fees if cash on hand allows. |
-| **1** | **Pay Min** | Pay only the minimum rollover fee (Default/Naive action). |
-| **2** | **Refinance** | Switch to a Credit Union rate (Requires window/availability). |
-| **3** | **NGO Help** | Apply for a one-time grant to wipe 35% of principal. |
-| **4** | **Wait** | Do nothing. Increases stress heavily if minimums missed. |
-
----
-
-## 📊 Evaluation & Grader
-We provide a strictly defined `grader.py` that evaluates agent performance across three dimensions:
-- **`test_escaped_trap`**: All loan balances reached zero.
-- **`test_fees_below_baseline`**: Total fees paid < 85% of the naive baseline.
-- **`test_no_spiral_lock`**: Stress never reached 10.
-
----
-
-## 🌍 Social Impact Grounding (India Context)
-Illegal digital lending apps are a systemic issue. According to RBI reports:
-- Over **600 illegal lending apps** identified in early 2021.
-- RBI's **Sachet portal** received **2,500+ complaints** in just one year.
-- Our "Spiral Lock" mechanic models the real-world cognitive load and exhaustion faced by borrowers in these debt traps.
-
----
-
-## 🚢 Deployment
-Easily deploy to Hugging Face Spaces using the OpenEnv CLI:
-```bash
-openenv push --repo-id YOUR_USER/loan-shark-escape-env
+**4. API Endpoints:**
 ```
+POST /reset    — Start a new episode (accepts {"task_id": "lse-easy"})
+POST /step     — Take an action (accepts {"action_type": "pay", "amount": 0})
+GET  /state    — Get current environment state
+POST /evaluate — Get graded score for completed episode
+GET  /health   — Health check
+```
+
+## 📈 Grading Criteria
+
+The grader evaluates three orthogonal metrics:
+
+| Metric | Weight | What it measures |
+|--------|--------|-----------------|
+| **Debt Escape** | 50% | Did the agent clear all debt? |
+| **Fee Efficiency** | 25% | Were total fees below the naive-payment baseline? |
+| **Stress Management** | 25% | Did stress stay below the spiral-lock threshold? |
+
+## 🔬 Why This Matters
+
+This environment demonstrates that **RL agents can outperform static financial planning rules** in adversarial, stochastic settings. The implications extend to:
+- **Financial literacy tools** — Teaching borrowers optimal escape strategies
+- **Policy simulation** — Testing regulatory interventions against predatory lending
+- **AI safety** — Studying agent behavior under resource constraints and time pressure
+
+## 📝 License
+
+MIT License — see [LICENSE](LICENSE) for details.
+
+## 👥 Team Neon
+
+Built for the Meta PyTorch Hackathon × Scaler School of Technology, Round 1.
