@@ -65,7 +65,8 @@ def _parse_action(raw_text: str) -> str:
     return "wait"
 
 
-def _build_prompt(observation: dict[str, Any]) -> str:
+def _build_prompt(observation: dict[str, Any], history: list[str]) -> str:
+    history_text = "\n".join([f"Month {i}: {h}" for i, h in enumerate(history)]) if history else "No previous actions taken."
     return (
         "You are an AI advisor helping a borrower escape a predatory debt trap.\n"
         "Clear all debt without letting stress reach 10 (spiral lock).\n\n"
@@ -76,7 +77,9 @@ def _build_prompt(observation: dict[str, Any]) -> str:
         "- ngo: one-time grant (wipes 35% of principal) if not used\n"
         "- wait: skip payment (interest accrues, stress rises)\n\n"
         f"Observation JSON:\n{json.dumps(observation, indent=2)}\n\n"
+        f"Past Actions History:\n{history_text}\n\n"
         "Please think step-by-step. First, analyze the current debt, stress, and available one-time actions (like ngo or refinance). "
+        "Review your past actions history to avoid repeating mistakes or forgetting what you've already tried. "
         "Determine what action maximizes debt reduction while keeping stress manageable. "
         "Conclude your response with the final chosen action enclosed in brackets like: [pay], [borrow], [refinance], [ngo], or [wait]."
     )
@@ -158,17 +161,19 @@ async def run_task(
     obs = await client.reset(task_id)
     step_idx = 0
     max_steps = 24
+    history = []
 
     while step_idx < max_steps:
         st = await client.get_state()
         if st.get("is_done"):
             break
 
-        prompt = _build_prompt(obs)
+        prompt = _build_prompt(obs, history)
         raw_output = _call_llm(oa_client, prompt, obs)
         action = _parse_action(raw_output)
 
         obs = await client.step(action)
+        history.append(f"Took action [{action}]")
 
         reward = obs.get("reward", 0.0)
         print(f"[STEP] step={step_idx} reward={reward}", flush=True)
