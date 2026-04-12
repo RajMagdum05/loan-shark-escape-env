@@ -1,12 +1,7 @@
 fastapi
 uvicorn
 pydantic
-pytest
-openenv-core
-python-dotenv
-anthropic
-openai
 httpx
-pandas
-matplotlib
+python-dotenv
 google-generativeai
+openai

@@ -13,5 +13,4 @@ COPY . .
 EXPOSE 7860
 
 # Start the application
-# Load root ``app.py`` first so a stale ``server/app.py`` on HF cannot break startup.
-CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "7860"]
+CMD ["uvicorn", "server.app:app", "--host", "0.0.0.0", "--port", "7860"]

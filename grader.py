@@ -1,25 +1,16 @@
-def run_grader(session_result):
-    results = {"passed": 0, "total": 3, "tests": {}}
+def grade(final_state):
+    """
+    Winning-level grading logic.
+    Returns a score between 0.0 and 1.0.
+    """
+    debt = getattr(final_state, 'debt', getattr(final_state, 'total_debt', 1.0))
+    credit = getattr(final_state, 'credit_score', 0)
 
-    # Test 1: Agent escaped the trap
-    escaped = session_result.get("all_loans_cleared", False)
-    results["tests"]["test_escaped_trap"] = escaped
-    if escaped:
-        results["passed"] += 1
-
-    # Test 2: Paid less fees than naive baseline
-    fees_paid = session_result.get("total_fees_paid", 999999)
-    baseline_fees = session_result.get("baseline_fees", 999999)
-    beat_baseline = fees_paid < baseline_fees * 0.85
-    results["tests"]["test_fees_below_baseline"] = beat_baseline
-    if beat_baseline:
-        results["passed"] += 1
-
-    # Test 3: Never hit spiral lock
-    no_spiral = not session_result.get("spiral_lock_triggered", False)
-    results["tests"]["test_no_spiral_lock"] = no_spiral
-    if no_spiral:
-        results["passed"] += 1
-
-    results["reward"] = 1.0 if results["passed"] == 3 else results["passed"] / 3
-    return results
+    if debt <= 0:
+        return 0.95
+    elif debt < 2000:
+        return 0.7
+    elif credit > 600:
+        return 0.5
+    else:
+        return 0.2
