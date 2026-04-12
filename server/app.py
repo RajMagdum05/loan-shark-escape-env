@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from fastapi import FastAPI, HTTPException
+import json
+
+from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel
 
 from models import LoanSharkAction
@@ -9,9 +11,8 @@ from server.environment import LoanSharkEnvironment
 app = FastAPI(title="Loan Shark Escape Environment")
 environment = LoanSharkEnvironment()
 
-
-class ResetRequest(BaseModel):
-    task_id: str
+# Default when POST /reset has no body (some automated validators send empty body).
+DEFAULT_TASK_ID = "lse-easy"
 
 
 @app.get("/")
@@ -26,9 +27,22 @@ def health() -> dict[str, str]:
 
 
 @app.post("/reset")
-def reset(payload: ResetRequest) -> dict:
+async def reset(request: Request) -> dict:
+    """Accept JSON ``{"task_id": "..."}`` or an empty body (defaults to easy task)."""
+    task_id = DEFAULT_TASK_ID
     try:
-        return environment.reset(payload.task_id)
+        raw = await request.body()
+        if raw:
+            data = json.loads(raw.decode("utf-8"))
+            if isinstance(data, dict) and data.get("task_id") is not None:
+                tid = data["task_id"]
+                if isinstance(tid, str) and tid.strip():
+                    task_id = tid.strip()
+    except (json.JSONDecodeError, UnicodeDecodeError, TypeError, ValueError):
+        pass
+
+    try:
+        return environment.reset(task_id)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
