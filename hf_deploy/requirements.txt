@@ -1,9 +1,0 @@
-fastapi
-uvicorn
-pydantic
-pytest
-openenv-core
-python-dotenv
-anthropic
-openai
-httpx

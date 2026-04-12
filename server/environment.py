@@ -2,10 +2,17 @@ from __future__ import annotations
 
 import copy
 import json
+import uuid
 from pathlib import Path
 from typing import Any
 
-from grader import run_grader
+try:
+    from grader import run_grader
+except ImportError:
+    import sys
+    from pathlib import Path
+    sys.path.append(str(Path(__file__).parent.parent))
+    from grader import run_grader
 
 
 class LoanSharkEnvironment:
@@ -18,6 +25,8 @@ class LoanSharkEnvironment:
         self.done: bool = False
         self.baseline_fees: float = 0.0
         self.last_grader_result: dict[str, Any] | None = None
+        self.episode_id: str | None = None
+        self.step_count: int = 0
 
     def reset(self, task_id: str) -> dict[str, Any]:
         task_path = self.tasks_dir / f"{task_id}.json"
@@ -27,22 +36,30 @@ class LoanSharkEnvironment:
         task = json.loads(task_path.read_text())
         self.current_task = task
         self.done = False
+        self.episode_id = str(uuid.uuid4())
+        self.step_count = 0
 
         loans = []
         for raw_loan in task.get("loans", []):
+            bal = float(raw_loan["balance"])
+            wfee = float(raw_loan["weekly_fee"])
             loans.append(
                 {
                     "name": raw_loan["name"],
-                    "balance": float(raw_loan["balance"]),
-                    "weekly_fee": float(raw_loan["weekly_fee"]),
+                    "balance": bal,
+                    "weekly_fee": wfee,
                     "apr_equivalent": float(raw_loan.get("apr_equivalent", 2.6)),
                     "days_to_rollover": 7,
                     "is_refinanced": False,
+                    # Share of balance skimmed as rollover fee each month (predatory escalation).
+                    "fee_ratio": (wfee / bal) if bal > 0 else 0.0,
                 }
             )
 
         self.state = {
             "task_id": task["task_id"],
+            "episode_id": self.episode_id,
+            "step_count": self.step_count,
             "month": 0,
             "horizon_months": int(task["horizon_months"]),
             "cash_on_hand": 0.0,
@@ -60,6 +77,7 @@ class LoanSharkEnvironment:
         }
 
         # Baseline must be precomputed at reset so gameplay is measured against a fixed target.
+        # The baseline simulates a naive user who only pays minimum rollover fees.
         self.baseline_fees = self._compute_baseline(task)
         return self._observation()
 
@@ -80,6 +98,8 @@ class LoanSharkEnvironment:
 
         state = self.state
         state["month"] += 1
+        self.step_count += 1
+        state["step_count"] = self.step_count
         month = state["month"]
 
         # Monthly cashflow update first: income, expenses, then optional shock.
@@ -111,6 +131,14 @@ class LoanSharkEnvironment:
 
         state["all_loans_cleared"] = all(loan["balance"] <= 0 for loan in state["loans"])
 
+        active_after = [loan for loan in state["loans"] if loan["balance"] > 0]
+        if active_after and not state["all_loans_cleared"]:
+            min_due = sum(float(loan["weekly_fee"]) for loan in active_after)
+            if state["cash_on_hand"] < min_due:
+                # Mathematical spiral lock: cannot cover rollover on all active loans.
+                state["spiral_lock"] = True
+                self.done = True
+
         reward = self._compute_reward()
         done = self._check_done()
 
@@ -118,7 +146,10 @@ class LoanSharkEnvironment:
             "observation": self._observation(),
             "reward": reward,
             "done": done,
-            "info": {
+            "metadata": {
+                "episode_id": self.episode_id,
+                "step_count": self.step_count,
+                "task_id": state["task_id"],
                 "month": state["month"],
                 "baseline_fees": round(self.baseline_fees, 2),
             },
@@ -168,6 +199,8 @@ class LoanSharkEnvironment:
         ngo_available = self._ngo_available(month)
 
         return {
+            "month": int(state["month"]),
+            "horizon_months": int(state["horizon_months"]),
             "cash_on_hand": round(state["cash_on_hand"], 2),
             "loans": [
                 {
@@ -175,9 +208,11 @@ class LoanSharkEnvironment:
                     "balance": round(max(0.0, loan["balance"]), 2),
                     "weekly_fee": round(max(0.0, loan["weekly_fee"]), 2),
                     "days_to_rollover": int(loan.get("days_to_rollover", 7)),
+                    "is_refinanced": bool(loan.get("is_refinanced", False)),
                 }
                 for loan in state["loans"]
             ],
+            "credit_union_used": bool(state["credit_union_used"]),
             "escape_routes": {
                 "credit_union_available": credit_union_available,
                 "ngo_help_available": ngo_available,
@@ -187,6 +222,11 @@ class LoanSharkEnvironment:
             "total_fees_paid": round(state["total_fees_paid"], 2),
             "spiral_lock": bool(state["spiral_lock"]),
             "instruction": "Choose an action 0-4 to minimize fees and escape before spiral lock.",
+            "metadata": {
+                "episode_id": self.episode_id,
+                "step_count": self.step_count,
+                "task_id": state["task_id"],
+            },
         }
 
     def _apply_action_pay_full(self, active_loans: list[dict[str, Any]], paid_minimum: dict[str, bool]) -> None:
@@ -203,6 +243,12 @@ class LoanSharkEnvironment:
                 state["cash_on_hand"] -= loan["balance"]
                 loan["balance"] = 0.0
                 loan["weekly_fee"] = 0.0
+                paid_minimum[loan["name"]] = True
+            elif state["cash_on_hand"] >= loan["weekly_fee"]:
+                # If cannot pay full, at least pay minimum to avoid stress penalty.
+                fee = loan["weekly_fee"]
+                state["cash_on_hand"] -= fee
+                state["total_fees_paid"] += fee
                 paid_minimum[loan["name"]] = True
 
     def _apply_action_minimum(self, active_loans: list[dict[str, Any]], paid_minimum: dict[str, bool]) -> None:
@@ -289,9 +335,19 @@ class LoanSharkEnvironment:
 
             loan["days_to_rollover"] = 7
 
+        if self.current_task and self.current_task.get("predatory_fee_scales", False):
+            for loan in active_loans:
+                if loan["balance"] <= 0 or loan["is_refinanced"]:
+                    continue
+                ratio = float(loan.get("fee_ratio", 0.0))
+                loan["weekly_fee"] = max(1.0, loan["balance"] * ratio)
+
     def _compute_reward(self) -> float:
         assert self.state is not None
         state = self.state
+
+        if state.get("spiral_lock"):
+            return -100.0
 
         if state["stress_level"] >= 10:
             state["spiral_lock"] = True
@@ -362,6 +418,11 @@ class LoanSharkEnvironment:
                     "apr_equivalent": float(loan.get("apr_equivalent", 2.6)),
                     "days_to_rollover": 7,
                     "is_refinanced": False,
+                    "fee_ratio": (
+                        float(loan["weekly_fee"]) / float(loan["balance"])
+                        if float(loan["balance"]) > 0
+                        else 0.0
+                    ),
                 }
                 for loan in task.get("loans", [])
             ],

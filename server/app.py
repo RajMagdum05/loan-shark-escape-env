@@ -6,18 +6,23 @@ from pydantic import BaseModel
 from models import LoanSharkAction
 from server.environment import LoanSharkEnvironment
 
+app = FastAPI(title="Loan Shark Escape Environment")
+environment = LoanSharkEnvironment()
+
 
 class ResetRequest(BaseModel):
     task_id: str
 
 
-app = FastAPI(title="Loan Shark Escape Environment")
-environment = LoanSharkEnvironment()
+@app.get("/")
+def root() -> dict[str, str]:
+    """Some deploy probes hit `/` — keep a 200 for Space liveness."""
+    return {"status": "ok", "service": "loan-shark-escape-env"}
 
 
 @app.get("/health")
 def health() -> dict[str, str]:
-    return {"status": "healthy"}
+    return {"status": "healthy", "service": "loan-shark-escape-env"}
 
 
 @app.post("/reset")
