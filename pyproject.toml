@@ -10,12 +10,10 @@ dependencies = [
   "pytest",
   "openenv-core",
   "python-dotenv",
-  "anthropic",
   "openai",
   "httpx",
   "pandas",
   "matplotlib",
-  "google-generativeai",
 ]
 
 [project.scripts]
