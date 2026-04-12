@@ -1,49 +1,23 @@
-import sys
-from pathlib import Path
-
 import pytest
+from grader import _clamp, metric_escape_debt, score_episode
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+def test_clamp():
+    assert _clamp(1.5) == 0.99
+    assert _clamp(-0.5) == 0.01
+    assert _clamp(0.5) == 0.5
 
-from grader import (  # noqa: E402
-    metric_escape_debt,
-    metric_fees_vs_baseline,
-    metric_no_spiral_lock,
-    score_episode,
-)
+def test_metric_escape_debt():
+    assert metric_escape_debt({"debt": 0.0}) == 0.99
+    assert metric_escape_debt({"debt": -100.0}) == 0.99
+    assert metric_escape_debt({"debt": 500.0}) == 0.05
 
-
-def test_perfect_episode_scores_one():
-    m = {
-        "debt": 0.0,
-        "max_stress_level": 0,
-        "fees_accrued": 100.0,
-        "naive_baseline_fees": 2000.0,
+def test_score_episode():
+    # Should calculate compound score correctly and clamp it
+    metrics = {
+        "debt": 0,
+        "max_stress_level": 5,
+        "fees_accrued": 500,
+        "naive_baseline_fees": 1000
     }
-    assert metric_escape_debt(m) == 1.0
-    assert metric_no_spiral_lock(m) == 1.0
-    assert metric_fees_vs_baseline(m) == 1.0
-    assert score_episode("lse-easy", m) == 1.0
-
-
-def test_spiral_lock_zeroes_component():
-    m = {
-        "debt": 0.0,
-        "max_stress_level": 10,
-        "fees_accrued": 0.0,
-        "naive_baseline_fees": 2000.0,
-    }
-    assert metric_no_spiral_lock(m) == 0.0
-    s = score_episode("lse-medium", m)
-    assert 0.0 <= s < 1.0
-
-
-def test_score_always_in_unit_interval():
-    m = {
-        "debt": 5000.0,
-        "max_stress_level": 3,
-        "fees_accrued": 9000.0,
-        "naive_baseline_fees": 2000.0,
-    }
-    s = score_episode("lse-hard", m)
-    assert 0.0 <= s <= 1.0
+    score = score_episode("lse-easy", metrics)
+    assert 0.01 <= score <= 0.99

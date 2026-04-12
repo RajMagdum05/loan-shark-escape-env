@@ -48,6 +48,12 @@ def _llm_api_key() -> str | None:
 
 def _parse_action(raw_text: str) -> str:
     text = raw_text.lower()
+    # Find bracketed actions first (e.g. [pay], [ngo]) since prompt asks for it
+    match = re.search(r"\[(pay|borrow|refinance|ngo|wait)\]", text)
+    if match:
+        return match.group(1)
+
+    # Fallback if no brackets
     if "refinance" in text:
         return "refinance"
     if "borrow" in text:
@@ -63,14 +69,16 @@ def _build_prompt(observation: dict[str, Any]) -> str:
     return (
         "You are an AI advisor helping a borrower escape a predatory debt trap.\n"
         "Clear all debt without letting stress reach 10 (spiral lock).\n\n"
-        "Available actions (reply with exactly one keyword):\n"
-        "- pay: pay down debt from income\n"
-        "- borrow: more debt (usually bad)\n"
-        "- refinance: one-time credit-union relief if score > 620 and not used\n"
-        "- ngo: one-time grant (wipes ~35% of principal) if not used\n"
-        "- wait: skip payment; interest accrues and stress rises\n\n"
+        "Available actions:\n"
+        "- pay: pay down debt from income (reduces debt and stress)\n"
+        "- borrow: more debt (increases stress, lowers credit)\n"
+        "- refinance: one-time relief if score > 620 and not used (reduces debt by 10%)\n"
+        "- ngo: one-time grant (wipes 35% of principal) if not used\n"
+        "- wait: skip payment (interest accrues, stress rises)\n\n"
         f"Observation JSON:\n{json.dumps(observation, indent=2)}\n\n"
-        "Respond with exactly one word: pay, borrow, refinance, ngo, or wait."
+        "Please think step-by-step. First, analyze the current debt, stress, and available one-time actions (like ngo or refinance). "
+        "Determine what action maximizes debt reduction while keeping stress manageable. "
+        "Conclude your response with the final chosen action enclosed in brackets like: [pay], [borrow], [refinance], [ngo], or [wait]."
     )
 
 
