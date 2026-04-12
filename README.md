@@ -1,3 +1,13 @@
+---
+title: Loan Shark Escape
+emoji: 🦈
+colorFrom: indigo
+colorTo: blue
+sdk: docker
+pinned: false
+app_port: 7860
+---
+
 # 🏦 Loan Shark Escape Environment
 
 [![OpenEnv](https://img.shields.io/badge/OpenEnv-Compatible-blue)](https://github.com/meta-pytorch/OpenEnv)
