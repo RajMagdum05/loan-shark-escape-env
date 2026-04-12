@@ -6,6 +6,10 @@ from typing import Any
 
 from dotenv import load_dotenv
 from openai import OpenAI
+try:
+    import google.generativeai as genai
+except ImportError:
+    genai = None
 
 from client import LoanSharkEscapeEnv
 
@@ -14,8 +18,21 @@ load_dotenv()
 # Required Environment Variables (see hackathon dashboard checklist)
 API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:7860")
 MODEL_NAME = os.getenv("MODEL_NAME", "gpt-4o-mini")
-HF_TOKEN = os.getenv("HF_TOKEN")  # No default as per checklist
+HF_TOKEN = os.getenv("HF_TOKEN")
 LOCAL_IMAGE_NAME = os.getenv("LOCAL_IMAGE_NAME", "loan-shark-escape-env")
+
+# Toggle for running without OpenAI tokens
+GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
+USE_MOCK_AGENT = os.getenv("USE_MOCK_AGENT", "false").lower() == "true" or (not os.getenv("OPENAI_API_KEY") and not GOOGLE_API_KEY)
+
+# Initialize OpenAI client
+client = None
+if os.getenv("OPENAI_API_KEY") and not USE_MOCK_AGENT:
+    client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
+# Initialize Gemini client
+if GOOGLE_API_KEY and genai:
+    genai.configure(api_key=GOOGLE_API_KEY)
 
 # Comma-separated task ids (default: all three difficulties for grader enumeration)
 TASK_IDS = [
@@ -47,16 +64,80 @@ def _build_prompt(observation: dict[str, Any]) -> str:
     )
 
 
-def _call_llm(prompt: str) -> str:
-    client = OpenAI() # Uses OPENAI_API_KEY from env
+def _mock_agent_logic(observation: dict[str, Any]) -> str:
+    """Fallback deterministic logic when out of API tokens."""
+    routes = observation.get("escape_routes", {})
+    loans = observation.get("loans", [])
+    cash = observation.get("cash_on_hand", 0.0)
+    stress = observation.get("stress_level", 0)
+
+    # 1. Priority: Use Escape Routes if available
+    if routes.get("credit_union_available") and not observation.get("credit_union_used"):
+        return "2"
     
-    response = client.chat.completions.create(
-        model=MODEL_NAME,
-        messages=[{"role": "user", "content": prompt}],
-        max_tokens=10,
-        temperature=0,
-    )
-    return (response.choices[0].message.content or "").strip()
+    if routes.get("ngo_help_available"):
+        return "3"
+
+    # 2. Priority: Pay off high-interest loans if cash allows
+    active_loans = [l for l in loans if l["balance"] > 0]
+    if active_loans:
+        # Sort by best payoff impact: typically the one with highest fee/balance ratio
+        target = max(active_loans, key=lambda x: x["weekly_fee"])
+        if cash >= target["balance"]:
+            return "0"
+
+    # 3. Default: Pay Minimum to avoid stress death
+    if stress > 6:
+        return "1"
+    
+    # Simple heuristic fallback
+    return "1"
+
+
+def _call_llm(prompt: str, observation: dict[str, Any]) -> str:
+    # 1. Try Gemini first if key available
+    if GOOGLE_API_KEY and genai:
+        try:
+            # Use gemini-flash-latest as default for stability
+            gemini_model = MODEL_NAME if "gemini" in MODEL_NAME.lower() else "gemini-flash-latest"
+            model = genai.GenerativeModel(gemini_model)
+            response = model.generate_content(prompt)
+            return response.text.strip()
+        except Exception as e:
+            print(f"[WARN] Gemini call failed: {e}")
+            if not client: return _mock_agent_logic(observation)
+
+    # 2. Try OpenAI fallback
+    if client:
+        try:
+            response = client.chat.completions.create(
+                model=MODEL_NAME,
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=10,
+                temperature=0,
+            )
+            return (response.choices[0].message.content or "").strip()
+        except Exception as e:
+            print(f"[WARN] OpenAI call failed: {e}")
+
+    # 3. Final Fallback: Mock Agent
+    return _mock_agent_logic(observation)
+
+    # 2. Try OpenAI fallback
+    if client:
+        try:
+            response = client.chat.completions.create(
+                model=MODEL_NAME,
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=10,
+                temperature=0,
+            )
+            return (response.choices[0].message.content or "").strip()
+        except Exception as e:
+            print(f"[WARN] OpenAI call failed: {e}")
+
+    # 3. Final Fallback: Mock Agent
+    return _mock_agent_logic(observation)
 
 
 async def run_one_task(env: LoanSharkEscapeEnv, task_id: str) -> dict[str, Any]:
@@ -65,7 +146,7 @@ async def run_one_task(env: LoanSharkEscapeEnv, task_id: str) -> dict[str, Any]:
     step_count = 0
     while not done and step_count < 60:
         prompt = _build_prompt(observation)
-        model_output = _call_llm(prompt)
+        model_output = _call_llm(prompt, observation)
         action = _parse_action(model_output)
 
         step_payload = await env.step({"action": action})
@@ -93,7 +174,8 @@ async def run_episode() -> None:
     print("[START]")
 
     if HF_TOKEN:
-        os.environ.setdefault("HUGGINGFACEHUB_API_TOKEN", HF_TOKEN)
+        # Standardize on HUGGINGFACEHUB_API_TOKEN for library compatibility
+        os.environ["HUGGINGFACEHUB_API_TOKEN"] = HF_TOKEN
 
     async with LoanSharkEscapeEnv(API_BASE_URL) as env:
         try:

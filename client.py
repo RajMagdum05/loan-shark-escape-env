@@ -1,5 +1,7 @@
+from __future__ import annotations
+
 import asyncio
-from typing import Any
+from typing import Any, Union
 
 import httpx
 
@@ -37,7 +39,7 @@ class LoanSharkEscapeEnv:
         response.raise_for_status()
         return response.json()
 
-    async def step(self, action: LoanSharkAction | dict[str, Any] | int) -> dict[str, Any]:
+    async def step(self, action: Union[LoanSharkAction, dict[str, Any], int]) -> dict[str, Any]:
         client = await self._get_client()
         if LoanSharkAction is not None and isinstance(action, LoanSharkAction):
             payload = action.model_dump()
